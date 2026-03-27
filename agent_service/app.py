@@ -7,10 +7,11 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from google import genai
 import os
+from flask_cors import CORS
 
 load_dotenv()
-
 app = Flask(__name__)
+CORS(app)  # app exists now
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 incidents = {}
@@ -69,7 +70,7 @@ def analyze_error():
     line_number = data.get("lineNumber", scenario["lineNumber"])
     codebase_context = scenario["codebase_context"]
 
-    incident_id = f"ERR-{str(uuid.uuid4())[:3].upper()}"
+    incident_id = f"ERR-{str(uuid.uuid4())}"
     timestamp = datetime.now().strftime("%H:%M:%S")
 
     incidents[incident_id] = {
@@ -100,8 +101,12 @@ def analyze_error():
         contents=prompt
     )
 
-    raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    result = json.loads(raw)
+    try:
+        raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        incidents[incident_id]["status"] = "error"
+        return jsonify(incidents[incident_id]), 500
 
     incidents[incident_id]["summary"] = result.get("summary")
     incidents[incident_id]["diff"] = result.get("diff")
