@@ -1,0 +1,9 @@
+{
+  "name": "dashboard",
+  "dependencies": {
+    "react": "^18.2.0",
+    "@auth0/auth0-react": "^2.2.4",
+    "axios": "^1.6.0",
+    "lucide-react": "^0.290.0"
+  }
+}

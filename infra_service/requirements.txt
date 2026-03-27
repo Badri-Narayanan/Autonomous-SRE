@@ -1,0 +1,6 @@
+flask
+flask-cors
+aerospike
+requests
+python-dotenv
+overmind
