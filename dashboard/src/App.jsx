@@ -59,7 +59,7 @@ export default function App() {
     // Initial fetch
     const fetchData = async () => {
       try {
-        const res = await fetch('http://localhost:5000/bland-webhook')
+        const res = await fetch('http://localhost:5000/incidents')
         if (res.ok) {
           setBackendLive(true)
           const data = await res.json()
