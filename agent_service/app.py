@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from google import genai
 import os
+import requests
 
 load_dotenv()
 
@@ -69,6 +70,22 @@ def analyze_error():
     incidents[incident_id]["diff"] = result.get("diff")
     incidents[incident_id]["status"] = "action required"
 
+    # After updating incidents with Gemini results, trigger Bland AI
+    bland_resp = requests.post(
+        "https://api.bland.ai/v1/calls",
+        headers={
+            "authorization": os.getenv("BLAND_AI_API_KEY"),
+            "Content-Type": "application/json"
+        },
+        json={
+            "phone_number": os.getenv("BLAND_AI_PHONE"),
+            "task": f"You are an automated SRE assistant. Notify the engineer that a {error_log} error was detected in {file_path} at line {line_number}. Gemini AI has analyzed it and says: {result.get('summary')}. Ask them to log into the dashboard to review and approve the fix.",
+            "voice": "june",
+            "wait_for_greeting": True
+        }
+    )
+
+    incidents[incident_id]["callStatus"] = "ringing"
     return jsonify(incidents[incident_id])
 
 @app.route("/incidents", methods=["GET"])
@@ -78,7 +95,6 @@ def get_incidents():
 @app.route("/bland-webhook", methods=["POST"])
 def bland_webhook():
     data = request.json
-    print("Bland AI webhook received:", data)
     # Update callStatus for relevant incident if needed
     return jsonify({"status": "ok"})
 
