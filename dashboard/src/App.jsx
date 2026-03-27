@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import Navbar from './components/Navbar'
 import IncidentCard from './components/IncidentCard'
@@ -68,19 +68,22 @@ export default function App() {
             // Backend returned multiple incidents
             setIncidents(data.incidents)
             
-            // If no incident is selected, or the selected one was updated, update it
-            if (!selected && data.incidents.length > 0) {
+            // Handle empty incidents array
+            if (data.incidents.length === 0) {
+              setSelected(null)
+            } else if (!selected) {
+              // No incident selected, select the first one
               setSelected(data.incidents[0])
-            } else if (selected) {
+            } else {
+              // Update selected incident if it still exists
               const updated = data.incidents.find(i => i.id === selected.id)
               if (updated) {
                 setSelected(updated)
+              } else {
+                // Selected incident no longer exists, clear selection
+                setSelected(null)
               }
             }
-          } else if (data?.incidents?.length === 0) {
-            // No incidents
-            setIncidents([])
-            setSelected(null)
           }
         }
       } catch {

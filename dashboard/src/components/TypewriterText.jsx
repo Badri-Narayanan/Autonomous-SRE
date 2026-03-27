@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function TypewriterText({ text, speed = 30 }) {
   const [displayed, setDisplayed] = useState('')
@@ -11,7 +11,7 @@ export default function TypewriterText({ text, speed = 30 }) {
   }, [text])
 
   useEffect(() => {
-    if (index < text.length) {
+    if (text && index < text.length) {
       const timeout = setTimeout(() => {
         setDisplayed(prev => prev + text[index])
         setIndex(index + 1)
