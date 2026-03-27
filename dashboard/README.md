@@ -148,7 +148,7 @@ dashboard/
 
 ## 🔌 Backend API Integration
 
-The dashboard expects a backend API at `http://localhost:5000/bland-webhook` that returns:
+The dashboard expects a backend API at `http://localhost:5000/incidents` that returns:
 
 ```json
 {
