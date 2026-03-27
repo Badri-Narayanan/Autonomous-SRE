@@ -39,7 +39,7 @@ def polling_loop():
 
                 log_trace(
                     "AI Engine Accepted",
-                    f"Incident {result.get('id')} queued | Status: {result.get('status')} | Gemini processing async...",
+                    f"Incident {record['id']} queued | Status: {record.get('status')} | Gemini processing async...",
                     level="success"
                 )
 
