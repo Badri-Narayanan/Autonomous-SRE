@@ -1,31 +1,77 @@
 import json
-import re
 import uuid
+import random
+import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from google import genai
 import os
-import requests
 
 load_dotenv()
 
 app = Flask(__name__)
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-incidents = {}  # store incidents in memory
+incidents = {}
+
+SCENARIOS = [
+    {
+        "error_log": "NullPointerException at line 42",
+        "file": "src/services/UserService.java",
+        "lineNumber": 42,
+        "codebase_context": """
+        File: UserService.java, Line 42
+        String username = user.getName();
+        int length = username.length(); // potential null here
+        """
+    },
+    {
+        "error_log": "TypeError: Cannot read properties of null (reading 'token')",
+        "file": "src/auth/AuthMiddleware.py",
+        "lineNumber": 87,
+        "codebase_context": """
+        File: AuthMiddleware.py, Line 87
+        token = request.headers.get('Authorization').split(' ')[1]
+        # headers might not contain Authorization
+        """
+    },
+    {
+        "error_log": "IndexError: list index out of range",
+        "file": "src/pipeline/DataProcessor.py",
+        "lineNumber": 113,
+        "codebase_context": """
+        File: DataProcessor.py, Line 113
+        first_item = data_list[0]
+        # data_list might be empty
+        """
+    },
+    {
+        "error_log": "ConnectionTimeoutError: Database connection timed out after 30s",
+        "file": "src/db/DatabasePool.py",
+        "lineNumber": 56,
+        "codebase_context": """
+        File: DatabasePool.py, Line 56
+        conn = db.connect(timeout=30)
+        # no retry logic implemented
+        """
+    }
+]
 
 @app.route("/analyze-error", methods=["POST"])
 def analyze_error():
     data = request.json
-    error_log = data.get("error_log")
-    file_path = data.get("file", "unknown/file.py")
-    line_number = data.get("lineNumber", 0)
+
+    # Pick random scenario or use provided data
+    scenario = random.choice(SCENARIOS)
+    error_log = data.get("error_log", scenario["error_log"])
+    file_path = data.get("file", scenario["file"])
+    line_number = data.get("lineNumber", scenario["lineNumber"])
+    codebase_context = scenario["codebase_context"]
 
     incident_id = f"ERR-{str(uuid.uuid4())[:3].upper()}"
     timestamp = datetime.now().strftime("%H:%M:%S")
 
-    # Store initial incident as "investigating"
     incidents[incident_id] = {
         "id": incident_id,
         "status": "investigating",
@@ -39,13 +85,6 @@ def analyze_error():
         "lineNumber": line_number,
         "callStatus": "idle"
     }
-
-    # Mock Macroscope context
-    codebase_context = f"""
-    File: {file_path}, Line {line_number}
-    String username = user.getName();
-    int length = username.length(); // potential null here
-    """
 
     prompt = f"""
     You are an expert software engineer.
@@ -61,16 +100,13 @@ def analyze_error():
         contents=prompt
     )
 
-    # Clean markdown backticks if present
     raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     result = json.loads(raw)
 
-    # Update incident with Gemini results
     incidents[incident_id]["summary"] = result.get("summary")
     incidents[incident_id]["diff"] = result.get("diff")
     incidents[incident_id]["status"] = "action required"
 
-    # After updating incidents with Gemini results, trigger Bland AI
     bland_resp = requests.post(
         "https://api.bland.ai/v1/calls",
         headers={
@@ -85,6 +121,7 @@ def analyze_error():
         }
     )
 
+    print("Bland AI response:", bland_resp.status_code, bland_resp.text)
     incidents[incident_id]["callStatus"] = "ringing"
     return jsonify(incidents[incident_id])
 
@@ -95,7 +132,7 @@ def get_incidents():
 @app.route("/bland-webhook", methods=["POST"])
 def bland_webhook():
     data = request.json
-    # Update callStatus for relevant incident if needed
+    print("Bland AI webhook received:", data)
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
