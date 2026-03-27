@@ -47,57 +47,47 @@ export default function App() {
   const { isLoading, isAuthenticated, loginWithRedirect, error } = useAuth0()
   const [incidents, setIncidents] = useState([])
   const [selected, setSelected] = useState(null)
-  const [deployed, setDeployed] = useState(false)
+  const [deployedId, setDeployedId] = useState(null)
   const [showCallToast, setShowCallToast] = useState(false)
   const [backendLive, setBackendLive] = useState(false)
 
   const systemBreached = incidents.some(i => ['action required', 'investigating'].includes(i.status?.toLowerCase()))
 
   useEffect(() => {
-    if (!isAuthenticated) return
-    
-    // Initial fetch
-    const fetchData = async () => {
-      try {
-        const res = await fetch('http://localhost:5000/incidents')
-        if (res.ok) {
-          setBackendLive(true)
-          const data = await res.json()
-          
-          if (data?.incidents && Array.isArray(data.incidents)) {
-            // Backend returned multiple incidents
-            setIncidents(data.incidents)
-            
-            // Handle empty incidents array
-            if (data.incidents.length === 0) {
-              setSelected(null)
-            } else if (!selected) {
-              // No incident selected, select the first one
-              setSelected(data.incidents[0])
-            } else {
-              // Update selected incident if it still exists
-              const updated = data.incidents.find(i => i.id === selected.id)
-              if (updated) {
-                setSelected(updated)
-              } else {
-                // Selected incident no longer exists, clear selection
-                setSelected(null)
-              }
-            }
+  if (!isAuthenticated) return
+
+  const fetchData = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/incidents')
+      if (res.ok) {
+        setBackendLive(true)
+        const data = await res.json()
+        if (data?.incidents && Array.isArray(data.incidents)) {
+          setIncidents(data.incidents)
+
+          if (data.incidents.length === 0) {
+            setSelected(null)
+          } else {
+            // Use functional updater so we always read current selected
+            setSelected(prev => {
+              if (!prev) return data.incidents[0]
+              const updated = data.incidents.find(i => i.id === prev.id)
+              return updated ?? data.incidents[0]
+            })
           }
         }
-      } catch {
-        // Backend not live, use dummy data
-        setBackendLive(false)
-        setIncidents(DUMMY_INCIDENTS)
-        setSelected(DUMMY_INCIDENTS[0])
       }
+    } catch {
+      setBackendLive(false)
+      setIncidents(DUMMY_INCIDENTS)
+      setSelected(prev => prev ?? DUMMY_INCIDENTS[0])
     }
+  }
 
-    fetchData()
-    const poll = setInterval(fetchData, 2000)
-    return () => clearInterval(poll)
-  }, [isAuthenticated])
+  fetchData()
+  const poll = setInterval(fetchData, 2000)
+  return () => clearInterval(poll)
+}, [isAuthenticated])
 
   // Show call toast when call status changes to ringing or connected
   useEffect(() => {
@@ -134,7 +124,7 @@ export default function App() {
     </div>
   )
 
-  const canDeploy = selected?.status?.toLowerCase() === 'action required' && !deployed
+  const canDeploy = selected?.status?.toLowerCase() === 'action required' && deployedId !== selected?.id
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-gray-100 font-mono flex flex-col">
@@ -149,7 +139,7 @@ export default function App() {
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {incidents.map(inc => (
-              <div key={inc.id} onClick={() => { setSelected(inc); setDeployed(false) }}>
+              <div key={inc.id} onClick={() => { setSelected(inc); }}>
                 <IncidentCard incident={inc} active={selected?.id === inc.id} />
               </div>
             ))}
@@ -208,35 +198,35 @@ export default function App() {
               {/* Action Bar */}
               <button
                 disabled={!canDeploy}
-                onClick={() => setDeployed(true)}
+                onClick={() => setDeployedId(selected.id)}
                 className={`w-full py-6 font-mono font-black text-2xl tracking-widest uppercase rounded transition-all
-                  ${canDeploy
+                    ${canDeploy
                     ? 'bg-emerald-400 text-black hover:bg-emerald-300 shadow-2xl shadow-emerald-500/50 animate-pulse cursor-pointer'
-                    : deployed
-                      ? 'bg-slate-800 text-emerald-400 border-2 border-emerald-500 cursor-default'
-                      : 'bg-slate-800 text-slate-600 border-2 border-slate-700 cursor-not-allowed'
-                  }`}
-              >
-                {deployed ? (
-                  <span className="flex items-center justify-center gap-3">
+                    : deployedId === selected?.id
+                        ? 'bg-slate-800 text-emerald-400 border-2 border-emerald-500 cursor-default'
+                        : 'bg-slate-800 text-slate-600 border-2 border-slate-700 cursor-not-allowed'
+                    }`}
+                >
+                {deployedId === selected?.id ? (
+                    <span className="flex items-center justify-center gap-3">
                     <Zap className="w-6 h-6" />
                     DEPLOYED
-                  </span>
+                    </span>
                 ) : canDeploy ? (
-                  <span className="flex items-center justify-center gap-3">
+                    <span className="flex items-center justify-center gap-3">
                     <Zap className="w-6 h-6" />
-                    APPROVE & DEPLOY
-                  </span>
+                    APPROVE &amp; DEPLOY
+                    </span>
                 ) : (
-                  'APPROVE & DEPLOY'
+                    'APPROVE & DEPLOY'
                 )}
-              </button>
+                </button>
 
-              {!canDeploy && !deployed && (
+                {!canDeploy && deployedId !== selected?.id && (
                 <p className="text-center text-slate-600 text-xs">
-                  Button activates when incident reaches "Action Required"
+                    Button activates when incident reaches "Action Required"
                 </p>
-              )}
+                )}
             </>
           )}
         </main>
