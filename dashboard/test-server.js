@@ -219,7 +219,7 @@ const incidentTimeline = [
 let startTime = Date.now();
 const activeIncidents = new Map();
 
-app.get('/bland-webhook', (_req, res) => {
+app.get('/incidents', (_req, res) => {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   
   // Get all updates that should have happened by now
