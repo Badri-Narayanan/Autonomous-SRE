@@ -8,10 +8,11 @@ from dotenv import load_dotenv
 from google import genai
 import os
 from flask_cors import CORS
+import threading
 
 load_dotenv()
 app = Flask(__name__)
-CORS(app)  # app exists now
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])  # app exists now
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 incidents = {}
@@ -59,20 +60,25 @@ SCENARIOS = [
     }
 ]
 
+# In agent_service/app.py
+# Add this import at the top with the other imports:
+
+
+# Replace the entire analyze_error() function with this:
 @app.route("/analyze-error", methods=["POST"])
 def analyze_error():
     data = request.json
 
-    # Pick random scenario or use provided data
     scenario = random.choice(SCENARIOS)
     error_log = data.get("error_log", scenario["error_log"])
     file_path = data.get("file", scenario["file"])
     line_number = data.get("lineNumber", scenario["lineNumber"])
     codebase_context = scenario["codebase_context"]
 
-    incident_id = f"ERR-{str(uuid.uuid4())}"
+    incident_id = f"ERR-{str(uuid.uuid4())[:8].upper()}"
     timestamp = datetime.now().strftime("%H:%M:%S")
 
+    # Store immediately with "investigating" so dashboard shows it right away
     incidents[incident_id] = {
         "id": incident_id,
         "status": "investigating",
@@ -87,47 +93,57 @@ def analyze_error():
         "callStatus": "idle"
     }
 
-    prompt = f"""
-    You are an expert software engineer.
-    Given this error: {error_log}
-    And this codebase context: {codebase_context}
-    Return ONLY a raw JSON object (no markdown, no backticks) with:
-    - "summary": one sentence bug explanation
-    - "diff": a git-style diff string showing the fix
-    """
+    # Return immediately — dashboard will poll and see "investigating"
+    # Process Gemini + Bland AI in background
+    def process_async():
+        prompt = f"""
+        You are an expert software engineer.
+        Given this error: {error_log}
+        And this codebase context: {codebase_context}
+        Return ONLY a raw JSON object (no markdown, no backticks) with:
+        - "summary": one sentence bug explanation
+        - "diff": a git-style diff string showing the fix
+        """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
-        contents=prompt
-    )
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt
+            )
 
-    try:
-        raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        incidents[incident_id]["status"] = "error"
-        return jsonify(incidents[incident_id]), 500
+            raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            result = json.loads(raw)
 
-    incidents[incident_id]["summary"] = result.get("summary")
-    incidents[incident_id]["diff"] = result.get("diff")
-    incidents[incident_id]["status"] = "action required"
+            incidents[incident_id]["summary"] = result.get("summary")
+            incidents[incident_id]["diff"] = result.get("diff")
+            incidents[incident_id]["status"] = "action required"
 
-    bland_resp = requests.post(
-        "https://api.bland.ai/v1/calls",
-        headers={
-            "authorization": os.getenv("BLAND_AI_API_KEY"),
-            "Content-Type": "application/json"
-        },
-        json={
-            "phone_number": os.getenv("BLAND_AI_PHONE"),
-            "task": f"You are an automated SRE assistant. Notify the engineer that a {error_log} error was detected in {file_path} at line {line_number}. Gemini AI has analyzed it and says: {result.get('summary')}. Ask them to log into the dashboard to review and approve the fix.",
-            "voice": "june",
-            "wait_for_greeting": True
-        }
-    )
+            bland_resp = requests.post(
+                "https://api.bland.ai/v1/calls",
+                headers={
+                    "authorization": os.getenv("BLAND_AI_API_KEY"),
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "phone_number": os.getenv("BLAND_AI_PHONE"),
+                    "task": f"You are an automated SRE assistant. Notify the engineer that a {error_log} error was detected in {file_path} at line {line_number}. Gemini AI has analyzed it and says: {result.get('summary')}. Ask them to log into the dashboard to review and approve the fix.",
+                    "voice": "june",
+                    "wait_for_greeting": True
+                }
+            )
+            print("Bland AI response:", bland_resp.status_code, bland_resp.text)
+            incidents[incident_id]["callStatus"] = "ringing"
 
-    print("Bland AI response:", bland_resp.status_code, bland_resp.text)
-    incidents[incident_id]["callStatus"] = "ringing"
+        except json.JSONDecodeError:
+            incidents[incident_id]["status"] = "error"
+        except Exception as e:
+            print(f"Background processing error: {e}")
+            incidents[incident_id]["status"] = "error"
+
+    thread = threading.Thread(target=process_async, daemon=True)
+    thread.start()
+
+    # Return the "investigating" state immediately to Person 2's poller
     return jsonify(incidents[incident_id])
 
 @app.route("/incidents", methods=["GET"])
