@@ -88,10 +88,9 @@ export default function App() {
         }
       } catch {
         // Backend not live, use dummy data
-        if (!backendLive) {
-          setIncidents(DUMMY_INCIDENTS)
-          setSelected(DUMMY_INCIDENTS[0])
-        }
+        setBackendLive(false)
+        setIncidents(DUMMY_INCIDENTS)
+        setSelected(DUMMY_INCIDENTS[0])
       }
     }
 
