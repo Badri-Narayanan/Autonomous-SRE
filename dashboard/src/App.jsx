@@ -98,7 +98,7 @@ export default function App() {
     fetchData()
     const poll = setInterval(fetchData, 2000)
     return () => clearInterval(poll)
-  }, [isAuthenticated, backendLive])
+  }, [isAuthenticated, backendLive, selected])
 
   // Show call toast when call status changes to ringing or connected
   useEffect(() => {
