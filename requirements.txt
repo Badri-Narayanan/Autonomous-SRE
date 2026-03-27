@@ -1,0 +1,4 @@
+aerospike
+requests
+flask
+python-dotenv
